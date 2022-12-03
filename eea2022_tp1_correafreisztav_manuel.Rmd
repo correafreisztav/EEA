@@ -1,0 +1,413 @@
+---
+title: "Trabajo Práctico Número 1"
+output:
+  html_document:
+    df_print: paged
+---
+
+## **Alumno:** Manuel Correa Freisztav
+
+### mail: correafreisztavmanuel@gmail.com 
+
+##### Cargo librerias que utilizaré para este trabajo práctico y una paleta de colores "ColorBlind".
+```{r}
+library(readr)
+library(tidyverse)
+library(openintro)
+library(ggplot2)
+library(GGally)
+library(tidymodels)
+library(ggridges)
+library(corrr)
+library(knitr)
+library(kableExtra)
+library(MASS)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+## **1. Análisis exploratorios**  
+
+### Leer el archivo de train y mostrar su estructura
+```{r}
+train <- read_csv("Datasets/encuesta_salud_train.csv",show_col_types = FALSE)
+#View(train)
+train <- na.omit(train)
+glimpse(train)
+```
+
+### Algunas de las variables de interés son characters que luego me interesa que sean factors. Las paso a factor a continuación.
+```{r} 
+#ejemplos de pasar a factor
+train$consumo_semanal_verdura = 
+factor(train$consumo_semanal_verdura,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido")) 
+
+train$consumo_semanal_comida_grasa=
+factor(train$consumo_semanal_comida_grasa,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido"))
+
+train$frecuencia_hambre_mensual = factor(train$frecuencia_hambre_mensual,levels = c("Nunca", "Rara vez", "Algunas veces","Casi siempre","Siempre","Dato perdido"))
+
+train$consumo_semanal_snacks = 
+factor(train$consumo_semanal_snacks,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido")) 
+```
+
+### Inspección del Dataset
+
+### Hago una matriz de correlación para ver cómo se comportan conjuntamente las variables.
+```{r}
+train %>% 
+ correlate() %>% # convierte la matriz de corr en dataframe
+  shave() %>% # solo muestra información debajo de la diagonal principal
+  fashion() # acomoda los datos en forma tidy (por ej. redondeo de decimales)
+```
+
+##### Puesto que la variable de interés es 'peso', observo la diferencia de peso según género.
+```{r}
+ggplot(train, aes(x = peso, y = genero, fill = genero, alpha=.7)) + 
+  geom_density_ridges()+
+  scale_fill_manual(values=cbPalette[4:6])
+
+```
+
+##### El peso en el genero femenino se encuentra más concentrado en ciertos puntajes comparado con el género masculino.
+
+##### A continuación, se muestra un gráfico de tipo red (Network Plot) para resumir la interconexión entre variables.
+```{r}
+library(corrr)
+train %>% 
+ correlate() %>% 
+  network_plot(min_cor = 0.1
+               ,colors = (cbPalette[5:7]),legend="range")
+```
+
+#### Se muestran únicamente aquellas correlaciones que sean mayores a 0.1 (tanto positivas como negativas). La escala no va de -1 a 1 sino que está ajustada según el rango.
+
+#### A continuación, se realiza apertura por género para ver la distribución de variables según el género.
+```{r}
+#ggpairs para graficar segun variable
+#cor.test(train$altura, train$edad, method = "spearman")
+ggpairs(train%>%dplyr::select(peso,altura,genero,edad,edad_consumo_alcohol,dias_actividad_fisica_semanal),  mapping = aes(color = genero))
+```
+
+#### El hallazgo fundamental de este gráfico es que la correlación entre peso y altura, si bien se cumple para ambos géneros, se da ligeramente distinto, puesto que tanto el peso como la altura, parecieran tener mucha más dispersión en el género masculino que femenino. Sin embargo, en ambos casos pareciera existir una correlación positiva. Dado todo lo mencionado, es esperable que genero sea una categoría clave para los modelos y dé significativa.
+
+#### A su vez, como 'altura' es la variable que más correlación muestra con la variable a explicar, se realiza un scatter plot entre ambas. Se muestra a su vez un boxplot de la variable 'altura'.
+```{r}
+ggplot(train, aes(x = altura, y = peso)) +
+        geom_point(colour="#FF9999") +
+        theme_classic() +
+        labs(x="Altura", y="Peso", title = "Altura vs Peso")
+```
+
+```{r}
+ggplot(train, aes(y=altura)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(title="Boxplot de Altura", y="Altura")
+```
+
+### La relación entre peso y altura parece fuertemente correlacionada. A mayor altura, mayor peso, y a menor altura, menor peso.
+
+### Finalmente, la distribución de variables como "consumo semanal de verdura" y "consumo semanal de grasa" en términos de frecuencia relativa se muestra a continuación.
+```{r}
+#ploteo 1 (estos ploteos fueron creados con ayuda de compañeros, específicamente Tomás)
+ggplot(data = train) +
+  geom_count(mapping = aes(x = frecuencia_hambre_mensual, y = consumo_semanal_verdura)) +
+  scale_size_area() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
+#ploteo 2
+ggplot(data = train) +
+  geom_count(mapping = aes(x = frecuencia_hambre_mensual, y = consumo_semanal_comida_grasa)) +
+  scale_size_area() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
+```
+
+### Se puede observar que, en personas que reportan que "Nunca" sienten hambre, el consumo de grasas es bajo. Mientras que el consumo de verdudas está repartido y es variado en personas que "Nunca" sienten hambre.
+
+
+### En términos generales, se observa que el peso está correlacionado fuertemente con la altura en primer lugar, y luego posee correlaciones más débiles con otras variables como edad. A su vez, estas variables están correlacionadas con otras relacionadas a hábitos de alimentación o actividad física.
+
+
+## **2. Modelo Inicial**  
+
+### E(peso) = β0 +β1altura+β2edad+β3genero+β4diasActividadF isicaSemanal+β5consumoDiarioAlcohol
+```{r}
+modelo_inicial <- lm(peso ~ altura+edad+genero+dias_actividad_fisica_semanal+
+                       consumo_diario_alcohol, data = train)
+summary(modelo_inicial)
+```
+El valor de β1 indica que por cada aumento de un centímetro de altura, manteniendo constante el resto de las variables, el peso esperado aumenta en 0.650607 kilogramos (kg).
+
+El valor de β2 indica que por cada aumento de un año de edad, manteniendo constante el resto de las variables, el peso esperado aumenta en 1.406727 kg.
+
+El valor de β3 "generoMasculino" es la diferencia en la media esperada de peso comparado con el género "femenino", absorbido por la categoría basal. Dicha diferencia es de 1.262644 kg.
+
+El valor de β4 "dias_actividad_fisica_semanal" muestra que el peso esperado disminuye en promedio -0.087391 por cada día de actividad física semanal, manteniendo constante el resto de las variables.
+
+El valor de β5 "consumo_diario_alcohol" dice que el peso esperado aumentará en promedio 0.007271 por unidad en consumo_diario_alcohol, manteniendo constante el resto de las variables.
+
+Finalmente, el β0 (intercept) absorbe la categoría "generoFemenino", 0 días de actividad física semanal, 0 consumo diario de alcohol, 0 altura y 0 años de edad (aunque estos últimos dos no sean posibles).
+
+El intercept (género femenino y 0 de las variables numéricas), el género "masculino", la edad y la altura se muestran como coeficientes significativos. El modelo resulta significativo para explicar el peso (p-valor: < 2.2e-16), y el porcentaje de la variabilidad explicada es de aproximadamente el 35% (R2 ajustado = 0.3539)
+
+
+## **3. Modelo Categóricas**  
+
+### E(peso) = β0 + β1altura + β2edad + β3genero + β4consumoSemanalSnacks + β5genero · edad
+
+```{r}
+#E(peso) = β0 + β1altura + β2edad + β3genero + 
+#           β4consumoSemanalSnacks + β5genero · edad
+modelo_categoricas <- lm(peso ~ altura+edad+genero+consumo_semanal_snacks+genero*edad, data = train)
+summary(modelo_categoricas)
+```
+##### En este caso, tal y como se solicitó, el basal de snacks es “No comí comida salada o snacks en los últimos 7 días”, que queda absorbido por el intercept junto con genero "femenino" y el 0 de las variables continuas.
+
+##### Se encuentran como significativos el intercept, edad, género, Snacks 4 a 6 veces durante los últimos 7 días y la interacción entre género y edad (pero no género masculino solo).
+
+##### La interacción edad:generoMasculino implica el cambio esperado sobre el peso por el coeficiente de edad (b2) dado que se pertenece a una categoría de genero específica (masculino).
+
+#### A continuación, se testea si la variable Snacks es significativa en su conjunto.
+```{r}
+tidy(anova(modelo_categoricas))
+```
+
+### La variable Snacks es significativa en su conjunto (p-valor = 0.02184). Se propone una redefinición que permita obtener una mayor proporción de categorías significativas individualmente.
+
+```{r}
+train['Snackero']= 'si'
+train <- train %>% 
+  mutate(Snackero = case_when(consumo_semanal_snacks == "1 a 3 veces durante los últimos 7 días" ~'no',
+                                 consumo_semanal_snacks == "4 a 6 veces durante los últimos 7 días"           ~ 'no',
+                              consumo_semanal_snacks == "No comí comida salada o snacks en los últimos 7 días"           ~ 'no',
+                              TRUE ~ 'si'))
+```
+
+#### Armo variables dicotómicas según consume diariamente (o más), o si consume menos de una vez al día (nada, 1 a 3, o 4 a 6 veces por semana). Luego, analizo si existen cambios en la variabilidad explicada por el modelo.
+```{r}
+modelo_categoricas_snackeros <- lm(peso ~ altura+edad+genero+Snackero+genero*edad, data = train)
+summary(modelo_categoricas_snackeros)
+```
+### Si bien el coeficiente "SnackeroSi" se muestra altamente significativo, la variabilidad esperada disminuyó (r2 ajustado = 0.3562 cuando antes era de 0.3616). El intercept ahora absorbe tanto la basal de género como la de "SnackeroNo".
+
+
+## **4. Modelos Propios y Evaluación**  
+
+### Modelo de grasa
+
+#### El Modelo de grasa incluye la variable "consumo_semanal_comida_grasa" como única variable además de altura, edad y genero.
+```{r}
+modelo_grasa <- lm(peso ~ altura+edad+genero+
+              consumo_semanal_comida_grasa,data = train)
+summary(modelo_grasa)
+``` 
+#### El modelo es significativo (p-valor < 2.2e-16), y el r2 ajustado es de 0.3653. Varios de los coeficientes relacionados a consumo_semanal_comida_grasa se muestran significativos.
+
+
+### Modelo de hábitos
+
+#### El modelo de hábitos, además de la altura edad y género, utiliza un índice llamado "malos_habitos" que es una variable continua que tiene en cuenta hábitos de alimentación y de actividad física.
+```{r}
+train['malos_habitos']= train$dias_consumo_comida_rapida+train$consumo_diario_alcohol/(1+train$dias_actividad_fisica_semanal)**2
+
+modelo_habitos <- lm(peso~altura+edad+genero+malos_habitos,data=train)
+
+summary(modelo_habitos)
+
+```
+
+### Si bien el modelo es significativo (p-valor < 2.2e-16), la variabilidad explicada es menor que en el modelo de grasa (r2 ajustado = 0.3542). El coeficiente malos_habitos se muestra significativo (p-valor = 0.0191), disminuyendo -0.15851 kg en el peso esperado por cada unidad de 'malos_habitos', mientras todas las demás variables estén constantes.
+
+
+## Evaluación de modelos
+```{r}
+glance(modelo_inicial)
+```
+```{r}
+glance(modelo_categoricas_snackeros)
+```
+```{r}
+glance(modelo_grasa)
+```
+```{r}
+glance(modelo_habitos)
+```
+
+#### Las tablas muestran el r2 y el r2 ajustado (entre otros atributos) de los modelos utilizados hasta el momento.
+
+
+## Rendimiento en datos nuevos
+
+#### Abro el archivo de test. Tengo que agregar las dos columnas extras que cree en train, y también tengo que pasar a factor los mismos que pasé a factor en train.
+```{r}
+test <- read_csv("Datasets/encuesta_salud_test.csv",show_col_types = FALSE)
+
+test['Snackero']= 'si'
+test <- test %>% 
+  mutate(Snackero = case_when(consumo_semanal_snacks == "1 a 3 veces durante los últimos 7 días" ~'no',
+                                 consumo_semanal_snacks == "4 a 6 veces durante los últimos 7 días"           ~ 'no',
+                              consumo_semanal_snacks == "No comí comida salada o snacks en los últimos 7 días"           ~ 'no',
+                              TRUE ~ 'si'))
+
+test['malos_habitos']= test$dias_consumo_comida_rapida+test$consumo_diario_alcohol/(1+test$dias_actividad_fisica_semanal)**2
+
+#factors
+test$consumo_semanal_verdura = 
+factor(test$consumo_semanal_verdura,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido")) 
+
+test$consumo_semanal_comida_grasa=
+factor(test$consumo_semanal_comida_grasa,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido"))
+
+test$frecuencia_hambre_mensual = factor(test$frecuencia_hambre_mensual,levels = c("Nunca", "Rara vez", "Algunas veces","Casi siempre","Siempre","Dato perdido"))
+
+test$consumo_semanal_snacks = 
+factor(test$consumo_semanal_snacks,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido")) 
+
+glimpse(test)
+```
+
+```{r}
+# lista con todos los modelos
+models <- list(modelo_inicial = modelo_inicial, modelo_categoricas_snackeros = modelo_categoricas_snackeros, modelo_grasa = modelo_grasa, modelo_habitos = modelo_habitos)
+# variables resumen
+map_df(models, tidy, .id = "model")
+```
+
+## ¿Cuál es el mejor modelo en Train?
+
+#### A continuación se detallan las caracterísiticas de los modelos
+```{r}
+df_evaluacion_train = map_df(models, glance, .id = "model") %>%
+  # ordenamos por R2 ajustado
+  arrange(desc(adj.r.squared))
+
+df_evaluacion_train
+```
+
+
+```{r}
+lista_predicciones_training = map(.x = models, .f = augment) 
+# Obtenemos el RMSE para los modelos
+map_dfr(.x = lista_predicciones_training, .f = rmse, truth = peso, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+# Obtenemos el MAE para los modelos
+map_dfr(.x = lista_predicciones_training, .f = mae, truth = peso, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+
+```
+
+### El ganador indiscutido como mejor modelo de los evaluados es "modelo_grasa", tanto si se utiliza como métrica RMSE o MAE. El segundo y tercer puesto es para los modelos "modelo_categoricas_snackeros" y "modelo_habitos", respectivamente. Finalmente, el "modelo_inicial" es siempre el de menor rendimiento.
+
+
+
+## ¿Y en datos nuevos?
+
+```{r}
+lista_predicciones_testing = map(.x = models, .f = augment, newdata = test)
+# Obtenemos el RMSE para los 4 modelos
+map_dfr(.x = lista_predicciones_testing, .f = rmse, truth = peso, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+# Obtenemos el MAE para los 4 modelos
+map_dfr(.x = lista_predicciones_testing, .f = mae, truth = peso, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+```
+#### En datos nuevos, nuevamente el ganador como mejor modelo de los evaluados es "modelo_grasa". El orden se mantiene idéntico a train.
+
+### El mejor modelo de los evaluados es "modelo_grasa", tanto si se utiliza como métrica RMSE o MAE.
+
+
+## **5. Diagnóstico del modelo inicial**  
+
+### Supuestos del modelo lineal
+```{r}
+plot(modelo_inicial)
+
+```
+
+### Residuos vs valores predichos: Podría pensarse que la varianza se incrementa muy levemente con los valores predichos. Sin embargo, pareciera satisfacer el supuesto de homocedasticidad.
+
+### Normal QQ plot: El extremo superior derecho no se ajusta a la distribución teórica, por lo que no parece seguir una distribución normal. El extremo izquierdo inferior, salvo por una observación, prácticamente respeta la distribución teórica.
+
+### Residual vs leverage: Existe un punto (en el extremo derecho del 4to gráfico) con un leverage más alto.
+
+
+## **6. Modelo Robusto**  
+
+#### Se carga el dataset mencionado y se agregan las mismas columnas extras con las que se trabajó anteriormente.
+```{r}
+encuesta <- read_csv("Datasets/encuesta_salud_modelo6.csv",show_col_types = FALSE)
+
+#ahora agrego las dos columnas extras que cree en train
+encuesta['Snackero']= 'si'
+encuesta <- encuesta %>% 
+  mutate(Snackero = case_when(consumo_semanal_snacks == "1 a 3 veces durante los últimos 7 días" ~'no',
+                                 consumo_semanal_snacks == "4 a 6 veces durante los últimos 7 días"           ~ 'no',
+                              consumo_semanal_snacks == "No comí comida salada o snacks en los últimos 7 días"           ~ 'no',
+                              TRUE ~ 'si'))
+
+encuesta['malos_habitos']= encuesta$dias_consumo_comida_rapida+encuesta$consumo_diario_alcohol/(1+encuesta$dias_actividad_fisica_semanal)**2
+
+##también tengo que pasar a factor los mismos que pasé a factor en train
+#ejemplos de pasar a factor
+encuesta$consumo_semanal_verdura = 
+factor(encuesta$consumo_semanal_verdura,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido")) 
+
+encuesta$consumo_semanal_comida_grasa=
+factor(encuesta$consumo_semanal_comida_grasa,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido"))
+
+encuesta$frecuencia_hambre_mensual = factor(encuesta$frecuencia_hambre_mensual,levels = c("Nunca", "Rara vez", "Algunas veces","Casi siempre","Siempre","Dato perdido"))
+
+encuesta$consumo_semanal_snacks = 
+factor(encuesta$consumo_semanal_snacks,levels = c("No comí verduras ni hortalizas durante los últimos 7 días", "1 a 3 veces durante los últimos 7 días", "4 a 6 veces durante los últimos 7 días","1 vez al día","2 veces al día","3 veces al día","4 o más veces al día","Dato perdido")) 
+
+glimpse(encuesta)
+```
+
+#### La distribución de altura y peso no es igual a la que veníamos teniendo:
+```{r}
+ggplot(encuesta, aes(x = altura, y = peso)) +
+        geom_point(colour="#FF9999") +
+        theme_classic() +
+        labs(x="Altura", y="Peso", title = "Altura vs Peso")
+```
+### Existe entre peso y altura una relación similar a la anterior, pero ahora hay numerosas observaciones en las que personas con baja altura presentan un peso elevado. Estas observaciones no abundaban en el dataset de entrenamiento. Sin embargo, esas mismas también parecieran aumentar en peso a medida que aumenta la altura, aunque en un rango completamente diferente de peso.
+
+```{r}
+modelo_inicial_encuesta <- lm(peso ~ altura+edad+genero+dias_actividad_fisica_semanal+
+                       consumo_diario_alcohol, data = encuesta)
+summary(modelo_inicial_encuesta)
+```
+```{r}
+glance(modelo_inicial_encuesta)
+```
+### Cuando usamos el mismo modelo que en 'train' con estos nuevos datos, el r2 ajustado disminuye a 0.109475.
+
+```{r}
+plot(modelo_inicial_encuesta)
+```
+
+```{r}
+modelo_robusto <- rlm(peso ~ altura+edad+genero+dias_actividad_fisica_semanal+
+                       consumo_diario_alcohol, data = encuesta)
+summary(modelo_robusto)
+```
+```{r}
+glance(modelo_robusto)
+```
+```{r}
+plot(modelo_robusto)
+```
+```{r}
+summary(modelo_inicial_encuesta)$sigma
+summary(modelo_robusto)$sigma
+```
+### Se puede observar que el sigma del modelo robusto es casi de la mitad que el del modelo estándar.
+
+```{r}
+modelitos <- list(modelo_inicial_encuesta = modelo_inicial_encuesta, modelo_robusto = modelo_robusto)
+
+predicciones_encuesta_normalvsrobusto = map(.x = modelitos, .f = augment, newdata = encuesta)
+# Obtenemos el RMSE para los 2 modelos
+map_dfr(.x = predicciones_encuesta_normalvsrobusto, .f = rmse, truth = peso, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+# Obtenemos el MAE para los 2 modelos
+map_dfr(.x = predicciones_encuesta_normalvsrobusto, .f = mae, truth = peso, estimate = .fitted, .id="modelo") %>% arrange(.estimate)
+```
+### Curiosamente, si se utiliza como medida RMSE, el modelo_inicial_encuesta (modelo inicial aplicado a nuevos datos alterados) resulta ligeramente mejor que el modelo_robusto. Sin embargo, al utilizar MAE como métrica, el modelo_robusto pasa a ser el mejor modelo.
+
+### El RMSE penaliza mucho a los errores grandes, dado que los eleva al cuadrado antes de promediarlos. MAE por otro lado, trata de forma pareja a los errores. Usar MAE implica justamente darle menos importancia a los outliers, lo que lleva a un sistema más robusto.
